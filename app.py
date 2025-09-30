@@ -33,7 +33,8 @@ except Exception as e:
 
 # --- Single Flask App Initialization ---
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all REST API and WebSocket routes
+frontend_url = os.environ.get('FRONTEND_URL', '*') # Default to wildcard for development
+CORS(app, origins=[frontend_url], supports_credentials=True, methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
 sock = Sock(app) # Initialize WebSocket support
 
 # --- Logging Configuration (from server.py) ---
