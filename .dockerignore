@@ -1,0 +1,17 @@
+# Ignore Docker-related log files, which are causing the build to fail
+docker/logs/
+
+# Ignore the Python virtual environment
+venv/
+.venv/
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignore Git directory
+.git/
+
+# Ignore VSCode settings
+.vscode/
