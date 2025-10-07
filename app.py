@@ -23,6 +23,7 @@ try:
     from extractors.connectors.ga4_connector import GA4Connector
     from extractors.connectors.meta_ads_connector import MetaAdsConnector
     from extractors.connectors.google_sheets_connector import GoogleSheetsConnector
+    from extractors.connectors.hubspot_connector import HubspotConnector
     from extractors.base.api_connector import BaseAPIConnector
     CONNECTORS_AVAILABLE = True
 except Exception as e:
@@ -33,8 +34,11 @@ except Exception as e:
 
 # --- Single Flask App Initialization ---
 app = Flask(__name__)
+# A more secure CORS configuration for production
+# It allows credentials and restricts the origin to the one specified in the environment variable.
 frontend_url = os.environ.get('FRONTEND_URL', '*') # Default to wildcard for development
 CORS(app, origins=[frontend_url], supports_credentials=True, methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+
 sock = Sock(app) # Initialize WebSocket support
 
 # --- Logging Configuration (from server.py) ---
@@ -48,7 +52,8 @@ CONNECTOR_REGISTRY: Dict[str, Type[BaseAPIConnector]] = {
     'google_ads': GoogleAdsConnector,
     'ga4': GA4Connector,
     'meta_ads': MetaAdsConnector,
-    'google_sheets': GoogleSheetsConnector
+    'google_sheets': GoogleSheetsConnector,
+    'hubspot': HubspotConnector
 } if CONNECTORS_AVAILABLE else {}
 
 
@@ -185,6 +190,38 @@ def salesforce_oauth_callback():
         frontend_url = os.environ.get('FRONTEND_URL')
         # Redirect with an error status
         return redirect(f"{frontend_url}/integrations?source=salesforce&status=error&error_message={str(e)}")
+
+@app.route('/api/connectors/refresh-token', methods=['POST'])
+def refresh_token():
+    """
+    Refreshes an access token using a refresh token for a given connector.
+    """
+    data = request.get_json()
+    connector_type = data.get('connector_type')
+    credentials = data.get('credentials')
+
+    if not all([connector_type, credentials, credentials.get('refresh_token')]):
+        return jsonify({"error": "Missing connector_type or refresh_token"}), 400
+
+    try:
+        connector_class = get_connector(connector_type)
+
+        # The connector needs to be instantiated with credentials required for refresh.
+        # This might include client_id/secret for some providers.
+        # We pass all received credentials.
+        connector_instance = connector_class(credentials=credentials)
+
+        # This method must exist on your connector classes.
+        # It should take the refresh token and return new token data.
+        new_token_data = connector_instance.refresh_access_token()
+
+        # The response should include at least 'access_token' and 'expires_in'.
+        # It may or may not include a new 'refresh_token'.
+        return jsonify(new_token_data), 200
+
+    except Exception as e:
+        logger.error(f"Failed to refresh token for {connector_type}: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Token refresh failed: {str(e)}"}), 500
 
 # (You can add the other connector endpoints like /connect, /fetch-data etc. here)
 @app.route('/api/connectors/get-schema', methods=['POST'])
