@@ -2,6 +2,7 @@
 Salesforce API connector implementation.
 This module provides a connector for Salesforce APIs.
 """
+import os
 
 import logging
 import time
@@ -42,6 +43,8 @@ class SalesforceConnector(BaseAPIConnector):
         self.access_token = credentials.get('access_token')
         self.refresh_token = credentials.get('refresh_token')
         self.last_request_time = None
+        self.client_id = os.environ.get('SALESFORCE_CLIENT_ID')
+        self.client_secret = os.environ.get('SALESFORCE_CLIENT_SECRET')
         self.session = requests.Session()
         self.request_count = 0
         self.max_retries = 3
@@ -81,8 +84,8 @@ class SalesforceConnector(BaseAPIConnector):
         payload = {
             'grant_type': 'authorization_code',
             'code': auth_code,
-            'client_id': self.credentials['client_id'],
-            'client_secret': self.credentials['client_secret'],
+            'client_id': self.client_id,
+            'client_secret': self.client_secret,
             'redirect_uri': redirect_uri,
         }
         self.logger.info(f"Exchanging code for tokens with payload: {json.dumps({k: v for k, v in payload.items() if k != 'client_secret'}, indent=2)}")
@@ -109,8 +112,8 @@ class SalesforceConnector(BaseAPIConnector):
             auth_url = self._get_auth_url()
             payload = {
                 'grant_type': 'password',
-                'client_id': self.credentials['client_id'],
-                'client_secret': self.credentials['client_secret'],
+                'client_id': self.client_id,
+                'client_secret': self.client_secret,
                 'username': self.credentials['username'],
                 'password': self.credentials['password'],
             }
@@ -139,18 +142,18 @@ class SalesforceConnector(BaseAPIConnector):
             self.logger.error(f"Authentication error: {str(e)}")
             return False
 
-    def refresh_access_token(self) -> bool:
+    def refresh_access_token(self) -> Dict[str, Any]:
         """Refresh the access token using the refresh token."""
         if not self.refresh_token:
             self.logger.error("No refresh token available to refresh the access token.")
-            return False
+            raise Exception("No refresh token available.")
 
         try:
             auth_url = self._get_auth_url()
             payload = {
                 'grant_type': 'refresh_token',
-                'client_id': self.credentials['client_id'],
-                'client_secret': self.credentials['client_secret'],
+                'client_id': self.client_id,
+                'client_secret': self.client_secret,
                 'refresh_token': self.refresh_token,
             }
             response = self.session.post(auth_url, data=payload)
@@ -161,10 +164,10 @@ class SalesforceConnector(BaseAPIConnector):
             self.refresh_token = auth_data.get('refresh_token', self.refresh_token)
             self.session.headers.update({'Authorization': f'Bearer {self.access_token}'})
             self.logger.info("Successfully refreshed Salesforce access token.")
-            return True
+            return auth_data
         except Exception as e:
             self.logger.error(f"Error refreshing access token: {str(e)}")
-            return False
+            raise e
     
     def validate_connection(self) -> bool:
         """Validate the connection to Salesforce.

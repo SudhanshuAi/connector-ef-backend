@@ -2,6 +2,7 @@
 HubSpot API connector implementation.
 This module provides a connector for HubSpot APIs.
 """
+import os
 
 import logging
 import time
@@ -29,7 +30,6 @@ class HubspotConnector(BaseAPIConnector):
 
         Args:
             credentials: Dictionary containing authentication credentials
-                - `client_id`, `client_secret`
                 - Optional: `access_token`, `refresh_token`, `redirect_uri`
             rate_limit_config: Optional configuration for API rate limiting
         """
@@ -39,6 +39,8 @@ class HubspotConnector(BaseAPIConnector):
         self.api_base_url = "https://api.hubapi.com"
         self.access_token = credentials.get('access_token')
         self.refresh_token = credentials.get('refresh_token')
+        self.client_id = os.environ.get('HUBSPOT_CLIENT_ID')
+        self.client_secret = os.environ.get('HUBSPOT_CLIENT_SECRET')
         self.last_request_time = None
         self.session = requests.Session()
         self.request_count = 0
@@ -64,8 +66,8 @@ class HubspotConnector(BaseAPIConnector):
         auth_url = f"{self.api_base_url}/oauth/v1/token"
         payload = {
             'grant_type': 'authorization_code',
-            'client_id': self.credentials['client_id'],
-            'client_secret': self.credentials['client_secret'],
+            'client_id': self.client_id,
+            'client_secret': self.client_secret,
             'redirect_uri': redirect_uri,
             'code': auth_code,
         }
@@ -90,18 +92,18 @@ class HubspotConnector(BaseAPIConnector):
         """
         return self.validate_connection()
 
-    def refresh_access_token(self) -> bool:
+    def refresh_access_token(self) -> Dict[str, Any]:
         """Refresh the access token using the refresh token."""
         if not self.refresh_token:
             self.logger.error("No refresh token available to refresh the access token.")
-            return False
+            raise Exception("No refresh token available.")
 
         try:
             auth_url = f"{self.api_base_url}/oauth/v1/token"
             payload = {
                 'grant_type': 'refresh_token',
-                'client_id': self.credentials['client_id'],
-                'client_secret': self.credentials['client_secret'],
+                'client_id': self.client_id,
+                'client_secret': self.client_secret,
                 'refresh_token': self.refresh_token,
             }
             headers = {'Content-Type': 'application/x-www-form-urlencoded'}
@@ -114,10 +116,10 @@ class HubspotConnector(BaseAPIConnector):
             self.refresh_token = auth_data.get('refresh_token', self.refresh_token)
             self.session.headers.update({'Authorization': f'Bearer {self.access_token}'})
             self.logger.info("Successfully refreshed HubSpot access token.")
-            return True
+            return auth_data
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Error refreshing access token: {e.response.text if e.response else str(e)}")
-            return False
+            raise e
 
     def validate_connection(self) -> bool:
         """Validate the connection to HubSpot.
